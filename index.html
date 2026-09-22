@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Portfolio</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 60px;
+        }
+        
+        header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.2rem;
+            padding: 40px;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 30px;
+        }
+        
+        .project-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .project-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        
+        .project-thumbnail {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            background: #f0f0f0;
+        }
+        
+        .project-thumbnail-placeholder {
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 3rem;
+            font-weight: bold;
+        }
+        
+        .project-info {
+            padding: 24px;
+        }
+        
+        .project-info h3 {
+            font-size: 1.4rem;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .project-info p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+        
+        .project-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .tag {
+            background: #f0f0f0;
+            color: #667eea;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .empty-state {
+            text-align: center;
+            color: white;
+            padding: 60px 20px;
+        }
+        
+        .empty-state h2 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+        }
+        
+        .empty-state p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>My Portfolio</h1>
+            <p>Projects that I've built and shipped</p>
+        </header>
+        
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading projects...</p>
+        </div>
+        
+        <div id="projects" class="projects-grid" style="display: none;"></div>
+        
+        <div id="empty" class="empty-state" style="display: none;">
+            <h2>No projects yet</h2>
+            <p>Add folders to the <code>projects/</code> directory to see them here!</p>
+        </div>
+    </div>
+
+    <script>
+        // Fetch the list of projects from GitHub API
+        async function loadProjects() {
+            const loadingEl = document.getElementById('loading');
+            const projectsEl = document.getElementById('projects');
+            const emptyEl = document.getElementById('empty');
+            
+            try {
+                // Get repo info from the current URL
+                const repoInfo = getRepoInfo();
+                
+                if (!repoInfo) {
+                    // Fallback: try to load from local projects.json
+                    await loadFromLocalJSON();
+                    return;
+                }
+                
+                const { owner, repo, branch } = repoInfo;
+                
+                // Use GitHub API to list contents of the projects directory
+                const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/projects?ref=${branch}`;
+                
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`GitHub API error: ${response.status}`);
+                }
+                
+                const contents = await response.json();
+                
+                // Filter only directories (projects)
+                const projectFolders = contents.filter(item => item.type === 'dir');
+                
+                if (projectFolders.length === 0) {
+                    loadingEl.style.display = 'none';
+                    emptyEl.style.display = 'block';
+                    return;
+                }
+                
+                // Fetch info.json for each project
+                const projects = await Promise.all(
+                    projectFolders.map(async (folder) => {
+                        try {
+                            const infoUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/projects/${folder.name}/info.json`;
+                            const infoResponse = await fetch(infoUrl);
+                            
+                            if (infoResponse.ok) {
+                                const info = await infoResponse.json();
+                                return {
+                                    name: folder.name,
+                                    ...info
+                                };
+                            }
+                        } catch (e) {
+                            console.warn(`Could not load info.json for ${folder.name}`);
+                        }
+                        
+                        // Fallback if no info.json
+                        return {
+                            name: folder.name,
+                            title: formatTitle(folder.name),
+                            description: 'Click to view project',
+                            tags: []
+                        };
+                    })
+                );
+                
+                // Render projects
+                loadingEl.style.display = 'none';
+                renderProjects(projects, owner, repo, branch);
+                
+            } catch (error) {
+                console.error('Error loading projects:', error);
+                loadingEl.style.display = 'none';
+                
+                // Try local fallback
+                try {
+                    await loadFromLocalJSON();
+                } catch (e) {
+                    emptyEl.style.display = 'block';
+                    emptyEl.innerHTML = `
+                        <h2>Could not load projects</h2>
+                        <p>${error.message}</p>
+                    `;
+                }
+            }
+        }
+        
+        // Get GitHub repo info from URL (works for GitHub Pages)
+        function getRepoInfo() {
+            const hostname = window.location.hostname;
+            
+            // GitHub Pages: username.github.io/repo-name
+            if (hostname.endsWith('.github.io')) {
+                const owner = hostname.replace('.github.io', '');
+                const pathParts = window.location.pathname.split('/').filter(Boolean);
+                const repo = pathParts[0];
+                
+                if (repo) {
+                    return { owner, repo, branch: 'main' };
+                }
+            }
+            
+            return null;
+        }
+        
+        // Fallback: load from local projects.json file
+        async function loadFromLocalJSON() {
+            const loadingEl = document.getElementById('loading');
+            const projectsEl = document.getElementById('projects');
+            const emptyEl = document.getElementById('empty');
+            
+            const response = await fetch('projects.json');
+            
+            if (!response.ok) {
+                throw new Error('No projects.json found');
+            }
+            
+            const projects = await response.json();
+            
+            if (projects.length === 0) {
+                loadingEl.style.display = 'none';
+                emptyEl.style.display = 'block';
+                return;
+            }
+            
+            loadingEl.style.display = 'none';
+            
+            // Render without GitHub links (local mode)
+            projectsEl.style.display = 'grid';
+            projectsEl.innerHTML = projects.map(project => createProjectCard(project, null, null, null)).join('');
+        }
+        
+        // Format folder name to title
+        function formatTitle(name) {
+            return name
+                .replace(/[-_]/g, ' ')
+                .replace(/\b\w/g, l => l.toUpperCase());
+        }
+        
+        // Render all projects
+        function renderProjects(projects, owner, repo, branch) {
+            const projectsEl = document.getElementById('projects');
+            projectsEl.style.display = 'grid';
+            
+            projectsEl.innerHTML = projects.map(project => 
+                createProjectCard(project, owner, repo, branch)
+            ).join('');
+            
+            // Add click handlers
+            document.querySelectorAll('.project-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const url = card.dataset.url;
+                    if (url) window.open(url, '_blank');
+                });
+            });
+        }
+        
+        // Create a single project card
+        function createProjectCard(project, owner, repo, branch) {
+            const title = project.title || formatTitle(project.name);
+            const description = project.description || 'A project I built';
+            const tags = project.tags || [];
+            
+            // Build thumbnail URL
+            let thumbnailUrl = '';
+            let projectUrl = '';
+            
+            if (owner && repo && branch) {
+                // Try to load thumbnail from the project folder
+                thumbnailUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/projects/${project.name}/thumbnail.jpg`;
+                projectUrl = `https://${owner}.github.io/${repo}/projects/${project.name}/`;
+            }
+            
+            // If project has a custom URL in info.json, use that
+            if (project.url) {
+                projectUrl = project.url;
+            }
+            
+            const thumbnailHtml = thumbnailUrl 
+                ? `<img class="project-thumbnail" src="${thumbnailUrl}" alt="${title}" onerror="this.outerHTML='<div class=\\'project-thumbnail-placeholder\\'>${title.charAt(0)}</div>'">`
+                : `<div class="project-thumbnail-placeholder">${title.charAt(0)}</div>`;
+            
+            const tagsHtml = tags.length > 0
+                ? `<div class="project-tags">${tags.map(tag => `<span class="tag">${tag}</span>`).join('')}</div>`
+                : '';
+            
+            return `
+                <div class="project-card" data-url="${projectUrl}">
+                    ${thumbnailHtml}
+                    <div class="project-info">
+                        <h3>${title}</h3>
+                        <p>${description}</p>
+                        ${tagsHtml}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Initialize
+        loadProjects();
+    </script>
+</body>
+</html>
