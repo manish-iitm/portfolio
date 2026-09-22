@@ -2,5 +2,5 @@
     "title": "My Awesome Project",
     "description": "A brief description of what this project does and why it's cool.",
     "tags": ["HTML", "CSS", "JavaScript"],
-    "url": "https://example.com/my-project"
+    "url": "projects/project1/index.html"
 }
